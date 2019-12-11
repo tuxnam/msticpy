@@ -13,19 +13,28 @@ requests per minute for the account type that you have.
 
 """
 import abc
+import asyncio
 from functools import lru_cache
 from http import client
 from json import JSONDecodeError
 import traceback
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union, Iterable
 
 import attr
 from attr import Factory
 import requests
+import aiohttp
+import pandas as pd
 
 from ..._version import VERSION
 from ...nbtools.utility import export
-from .ti_provider_base import LookupResult, TIProvider, TISeverity, TILookupStatus
+from .ti_provider_base import (
+    LookupResult,
+    TIProvider,
+    TISeverity,
+    TILookupStatus,
+    generate_items,
+)
 
 __version__ = VERSION
 __author__ = "Ian Hellen"
@@ -62,6 +71,7 @@ class HttpProvider(TIProvider):
         super().__init__(**kwargs)
 
         self._requests_session = requests.Session()
+        self._aoihttp_session = None
         self._request_params = {}
         if "api_id" in kwargs:
             self._request_params["API_ID"] = kwargs.pop("api_id")
@@ -157,6 +167,137 @@ class HttpProvider(TIProvider):
                 url = req_params.get("url", None) if req_params else None
                 result.reference = url
             return result
+
+    async def _lookup_single_ioc(
+        self, ioc: str, ioc_type: str = None, query_type: str = None, **kwargs
+    ) -> LookupResult:
+        result = self._check_ioc_type(
+            ioc=ioc, ioc_type=ioc_type, query_subtype=query_type
+        )
+
+        result.provider = kwargs.get("provider_name", self.__class__.__name__)
+        if result.status:
+            return result
+
+        verb, req_params = self._substitute_parms(
+            result.ioc, result.ioc_type, query_type
+        )
+
+        if verb != "GET":
+            raise NotImplementedError(f"Unsupported verb {verb}")
+
+        async with self._check_or_create_session() as session:
+            try:
+                async with session.get(**req_params) as response:
+                    return await self._populate_result(result, req_params, response)
+            except (  # pylint: disable=duplicate-code
+                JSONDecodeError,
+                NotImplementedError,
+                ConnectionError,
+            ) as err:
+                result.details = err.args
+                result.raw_result = (
+                    type(err).__name__ + "\n" + str(err) + "\n" + traceback.format_exc()
+                )
+                if not isinstance(err, LookupError):
+                    url = req_params.get("url", None) if req_params else None
+                    result.reference = url
+                return result
+
+    async def _populate_result(
+        self,
+        result: LookupResult,
+        req_params: Dict[str, Any],
+        response: aiohttp.ClientResponse,
+    ) -> LookupResult:
+        result.status = response.status
+        result.reference = req_params["url"]
+        if result.status == 200:
+            result.raw_result = await response.json()
+            result.result, severity, result.details = self.parse_results(result)
+            result.set_severity(severity)
+            result.status = TILookupStatus.ok.value
+        else:
+            result.raw_result = str(response)
+            result.result = False
+            result.details = self._response_message(result.status)
+        return result
+
+    def _check_or_create_session(self) -> aiohttp.ClientSession:
+        if self._aoihttp_session is None or self._aoihttp_session.closed:
+            self._aoihttp_session = aiohttp.ClientSession()
+        return self._aoihttp_session
+
+    async def _lookup_multi_iocs(
+        self,
+        data: Union[pd.DataFrame, Dict[str, str], Iterable[str]],
+        obs_col: str = None,
+        ioc_type_col: str = None,
+        query_type: str = None,
+        **kwargs,
+    ) -> pd.DataFrame:
+        tasks = []
+        async with self._check_or_create_session():
+            for observable, ioc_type in generate_items(data, obs_col, ioc_type_col):
+                if not observable:
+                    continue
+                task = asyncio.create_task(
+                    self._lookup_single_ioc(
+                        ioc=observable,
+                        ioc_type=ioc_type,
+                        query_type=query_type,
+                        **kwargs,
+                    )
+                )
+                tasks.append(task)
+
+            results = []
+            lookup_results = await asyncio.gather(*tasks, return_exceptions=True)
+        for item_result in lookup_results:
+            results.append(pd.Series(attr.asdict(item_result)))
+        return pd.DataFrame(data=results).rename(columns=LookupResult.column_map())
+
+    async def lookup_iocs(
+        self,
+        data: Union[pd.DataFrame, Dict[str, str], Iterable[str]],
+        obs_col: str = None,
+        ioc_type_col: str = None,
+        query_type: str = None,
+        **kwargs,
+    ) -> pd.DataFrame:
+        """
+        Lookup collection of IoC observables.
+
+        Parameters
+        ----------
+        data : Union[pd.DataFrame, Dict[str, str], Iterable[str]]
+            Data input in one of three formats:
+            1. Pandas dataframe (you must supply the column name in
+            `obs_col` parameter)
+            2. Dict of observable, IoCType
+            3. Iterable of observables - IoCTypes will be inferred
+        obs_col : str, optional
+            DataFrame column to use for observables, by default None
+        ioc_type_col : str, optional
+            DataFrame column to use for IoCTypes, by default None
+        query_type : str, optional
+            Specify the data subtype to be queried, by default None.
+            If not specified the default record type for the IoC type
+            will be returned.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame of results.
+
+        """
+        return await self._lookup_multi_iocs(
+            data=data,
+            obs_col=obs_col,
+            ioc_type_col=ioc_type_col,
+            query_type=query_type,
+            **kwargs,
+        )
 
     # pylint: disable=too-many-branches
     def _substitute_parms(

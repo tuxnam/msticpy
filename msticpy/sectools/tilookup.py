@@ -184,6 +184,9 @@ class TILookup:
         """Load provider classes based on config."""
         prov_settings = get_provider_settings()
 
+        self._providers: Dict[str, TIProvider] = {}
+        self._secondary_providers: Dict[str, TIProvider] = {}
+
         for provider_entry, settings in prov_settings.items():
             # Allow overriding provider name to use another class
             provider_name = settings.provider if settings.provider else provider_entry
@@ -291,7 +294,7 @@ class TILookup:
         overall_result = any(res.result for _, res in result_list)
         return overall_result, result_list
 
-    def lookup_iocs(
+    async def lookup_iocs(
         self,
         data: Union[pd.DataFrame, Mapping[str, str], Iterable[str]],
         obs_col: str = None,
@@ -337,7 +340,7 @@ class TILookup:
             raise RuntimeError(_NO_PROVIDERS_MSSG)
 
         for prov_name, provider in selected_providers.items():
-            provider_result = provider.lookup_iocs(
+            provider_result = await provider.lookup_iocs(
                 data=data,
                 obs_col=obs_col,
                 ioc_type_col=ioc_type_col,
