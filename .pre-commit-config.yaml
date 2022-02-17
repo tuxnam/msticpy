@@ -4,6 +4,7 @@ repos:
     hooks:
       - id: check-yaml
       - id: check-json
+        exclude: .*devcontainer.json
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
   - repo: https://github.com/ambv/black
@@ -29,8 +30,29 @@ repos:
   - repo: local
     hooks:
       - id: check_reqs_all
-        name: check_reqs_all
+        name: Check/Build requirements-all.txt
         entry: python -m tools.create_reqs_all
-        pass_filenames: False
+        pass_filenames: false
+        language: python
+        types: [python]
+      - id: check_data_queries
+        name: Check docs for new queries
+        entry: python -m docs.generate_query_docs
+        files: msticpy/data/queries/*.yaml
+        pass_filenames: false
+        language: python
+        types: [yaml]
+      - id: check_api_docs
+        name: Check API docs for modules
+        entry: sphinx-apidoc
+        args:
+          - --o
+          - docs/source/api
+          - --force
+          - --module-first
+          - --separate
+          - msticpy
+          - msticpy/sectools
+        pass_filenames: false
         language: python
         types: [python]
