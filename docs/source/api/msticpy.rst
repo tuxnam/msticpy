@@ -1,6 +1,11 @@
 msticpy package
 ===============
 
+.. automodule:: msticpy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Subpackages
 -----------
 
@@ -15,11 +20,3 @@ Subpackages
    msticpy.nbtools
    msticpy.sectools
    msticpy.vis
-
-Module contents
----------------
-
-.. automodule:: msticpy
-   :members:
-   :undoc-members:
-   :show-inheritance:

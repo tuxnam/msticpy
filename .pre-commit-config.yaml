@@ -35,24 +35,9 @@ repos:
         pass_filenames: false
         language: python
         types: [python]
-      - id: check_data_queries
-        name: Check docs for new queries
-        entry: python -m docs.generate_query_docs
-        files: msticpy/data/queries/*.yaml
-        pass_filenames: false
-        language: python
-        types: [yaml]
       - id: check_api_docs
         name: Check API docs for modules
-        entry: sphinx-apidoc
-        args:
-          - --o
-          - docs/source/api
-          - --force
-          - --module-first
-          - --separate
-          - msticpy
-          - msticpy/sectools
+        entry: python -m docs.generate_api_docs --source msticpy --api_path docs/source/api --temp docs/source/.api_tmp --ignore msticpy/sectools
         pass_filenames: false
         language: python
         types: [python]
