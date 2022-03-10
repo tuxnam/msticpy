@@ -18,7 +18,7 @@ from ...common.exceptions import MsticpyUserConfigError
 
 
 __version__ = VERSION
-__author__ = "Ian Hellen"
+__author__ = "Neil Desai, Ian Hellen"
 
 
 ELASTIC_CONNECT_ARGS: Dict[str, str] = {
