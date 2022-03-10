@@ -20,6 +20,14 @@ msticpy.data.drivers.driver\_base module
    :undoc-members:
    :show-inheritance:
 
+msticpy.data.drivers.elastic\_driver module
+-------------------------------------------
+
+.. automodule:: msticpy.data.drivers.elastic_driver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 msticpy.data.drivers.kql\_driver module
 ---------------------------------------
 
